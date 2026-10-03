@@ -37,6 +37,11 @@
   .intro{position:relative;margin-top:-60px;background:var(--white);border-radius:4px;padding:20px 22px;border-top:3px solid var(--glass);box-shadow:0 10px 30px rgba(29,59,74,.12)}
   .intro p{margin:0 0 .9em;text-indent:2em}
   .intro p:last-child{margin-bottom:0}
+  .edit-toggle{text-align:center;margin-top:26px}
+  #btnEditToggle{background:#e3f0f7;color:var(--ink);border:1px solid #bcd9e8;font-size:17px;padding:9px 22px}
+  #btnEditToggle:hover{background:#d5e8f2}
+  #btnEditToggle[aria-expanded="true"]{background:#d5e8f2}
+  #editPanel{margin-top:14px;background:#f4f9fc;border:1px solid #d6e8f1}
   /* 拍立得照片列 */
   .strip{margin:34px calc(50% - 50vw) 8px;padding:0}
   .strip h3{max-width:700px;margin:0 auto 6px;padding:0 18px;font-size:1.3rem;color:var(--ink)}
@@ -111,9 +116,12 @@
     <div class="reel" data-reel="m"></div>
   </div>
 
-  <section>
+  <div class="edit-toggle">
+    <button type="button" id="btnEditToggle" aria-expanded="false" aria-controls="editPanel">✎ 修改已登記的資料</button>
+  </div>
+  <section id="editPanel" class="hidden">
     <h2>修改已登記的資料</h2>
-    <span class="hint" style="margin-bottom:10px">已經登記過的同學，輸入學號、生日和登記時填的手機，就能載入資料修改。第一次登記請直接往下填。</span>
+    <span class="hint" style="margin-bottom:10px">第一次登記的同學請略過這裡直接往下填；已經登記過的同學，如果想要修改更正已填寫的資料，輸入學號、生日和登記時填的手機，就能載入資料修改。</span>
     <div class="lookup">
       <div><label class="l" for="qSid">學號</label><input type="text" id="qSid"></div>
       <div><label class="l" for="qBday">出生年月日</label><input type="date" id="qBday"></div>
@@ -255,7 +263,7 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
   (function(){
     const P = window.PHOTOS || {};
     const CAP = {
-      m:[['m1','夕陽下的水上棧道'],['m6','椰子樹下望向大海'],['m2','沙灘上的充氣滑水道'],['m3','椰影下的海灘酒吧'],['m4','KANI 白色沙灘晚宴'],['m5','傍晚在碼頭跟船揮手']],
+      m:[['m1','夕陽下的水上棧道'],['m6','椰子樹下望向大海'],['m2','沙灘上的充氣滑水道'],['m3','椰影下的海灘酒吧'],['m4','KANI 白色沙灘晚宴'],['m5','懷念在碼頭的日子']],
       t:[['t1','方老師到普吉島探班'],['t2','帶小朋友做紮染 T 恤'],['t3','綠陽傘下的主泳池'],['t4','晚上的空中特技秀'],['t5','和實習同學在泳池邊'],['t6','泳池活動時間'],['t7','G.O 夥伴的自拍']]
     };
     if (P.hero) document.getElementById('hero').style.backgroundImage = `url(${P.hero})`;
@@ -320,6 +328,14 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
 
   /* ---- 訊息 ---- */
   function show(el, text, ok){ $(el).innerHTML = text ? `<div class="msg ${ok?'ok':'err'}">${text}</div>` : ''; }
+
+  /* ---- 修改區開關 ---- */
+  $('btnEditToggle').addEventListener('click', () => {
+    const open = $('editPanel').classList.toggle('hidden') === false;
+    $('btnEditToggle').setAttribute('aria-expanded', open);
+    $('btnEditToggle').textContent = open ? '✕ 收起修改區' : '✎ 修改已登記的資料';
+    if (open) $('qSid').focus();
+  });
 
   /* ---- 載入舊資料 ---- */
   $('btnLookup').addEventListener('click', () => {
