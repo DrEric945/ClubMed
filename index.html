@@ -81,7 +81,9 @@
   .radios label{margin-right:22px;white-space:nowrap}
   .sub{margin-top:10px;padding:12px 14px;border-left:2px solid var(--sand);background:#f7faf9}
   .hidden{display:none}
-  .lookup{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end}
+  .lookup{display:grid;grid-template-columns:1fr 1.5fr;gap:12px;align-items:end}
+  .dsel{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px}
+  .dsel select{padding-left:8px;padding-right:4px}
   @media (max-width:640px){.lookup{grid-template-columns:1fr}}
   button{
     font:inherit;font-size:18px;padding:10px 28px;border:none;border-radius:4px;
@@ -124,7 +126,7 @@
     <span class="hint" style="margin-bottom:10px">第一次登記的同學請略過這裡直接往下填；已經登記過的同學，如果想要修改更正已填寫的資料，輸入學號、生日和登記時填的手機，就能載入資料修改。</span>
     <div class="lookup">
       <div><label class="l" for="qSid">學號</label><input type="text" id="qSid"></div>
-      <div><label class="l" for="qBday">出生年月日</label><input type="date" id="qBday"></div>
+      <div><label class="l" for="qBdayY">出生年月日（西元）</label><div class="dsel" data-for="qBday"><select id="qBdayY" aria-label="出生年（西元）"></select><select aria-label="出生月"></select><select aria-label="出生日"></select></div><input type="hidden" id="qBday"></div>
       <div><label class="l" for="qMobile">手機</label><input type="tel" id="qMobile"></div>
       <button type="button" class="line" id="btnLookup">載入資料</button>
     </div>
@@ -140,7 +142,7 @@
       </div>
       <div class="row2">
         <div class="field"><label class="l" for="sid">學號<span class="req">*</span></label><input type="text" id="sid"></div>
-        <div class="field"><label class="l" for="birthday">出生年月日（西元）<span class="req">*</span></label><input type="date" id="birthday"></div>
+        <div class="field"><label class="l" for="birthdayY">出生年月日（西元）<span class="req">*</span></label><div class="dsel" data-for="birthday"><select id="birthdayY" aria-label="出生年（西元）"></select><select aria-label="出生月"></select><select aria-label="出生日"></select></div><input type="hidden" id="birthday"></div>
       </div>
       <div class="row2">
         <div class="field"><label class="l" for="phone">聯絡電話<span class="req">*</span></label><input type="tel" id="phone"></div>
@@ -329,6 +331,34 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
   /* ---- 訊息 ---- */
   function show(el, text, ok){ $(el).innerHTML = text ? `<div class="msg ${ok?'ok':'err'}">${text}</div>` : ''; }
 
+  /* ---- 出生年月日：年、月、日三個下拉選單 ---- */
+  const pad = n => String(n).padStart(2, '0');
+  function initDate(id){
+    const box = document.querySelector(`.dsel[data-for="${id}"]`);
+    const [y, m, d] = box.querySelectorAll('select');
+    const Y = new Date().getFullYear();
+    y.innerHTML = '<option value="">年</option>' + Array.from({length:35}, (_, i) => Y - 15 - i).map(v => `<option value="${v}">${v}年</option>`).join('');
+    m.innerHTML = '<option value="">月</option>' + Array.from({length:12}, (_, i) => `<option value="${pad(i+1)}">${i+1}月</option>`).join('');
+    const days = () => {
+      const keep = d.value;
+      const n = (y.value && m.value) ? new Date(+y.value, +m.value, 0).getDate() : 31;
+      d.innerHTML = '<option value="">日</option>' + Array.from({length:n}, (_, i) => `<option value="${pad(i+1)}">${i+1}日</option>`).join('');
+      if (keep && +keep <= n) d.value = keep;
+    };
+    const sync = () => { $(id).value = (y.value && m.value && d.value) ? `${y.value}-${m.value}-${d.value}` : ''; };
+    y.addEventListener('change', () => { days(); sync(); });
+    m.addEventListener('change', () => { days(); sync(); });
+    d.addEventListener('change', sync);
+    days();
+    box.setValue = v => {
+      const [yy, mm, dd] = String(v || '').split('-');
+      if (yy && !y.querySelector(`option[value="${yy}"]`)) y.insertAdjacentHTML('beforeend', `<option value="${yy}">${yy}年</option>`);
+      y.value = yy || ''; m.value = mm || ''; days(); d.value = dd || ''; sync();
+    };
+  }
+  function setDate(id, v){ document.querySelector(`.dsel[data-for="${id}"]`).setValue(v); }
+  initDate('birthday'); initDate('qBday');
+
   /* ---- 修改區開關 ---- */
   $('btnEditToggle').addEventListener('click', () => {
     const open = $('editPanel').classList.toggle('hidden') === false;
@@ -355,6 +385,7 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
   function fill(r){
     ['nameZh','nameEn','sid','birthday','phone','mobile','email','dept','grade','engScore','gpa','fatherNat','motherNat']
       .forEach(k => $(k).value = r[k] || '');
+    setDate('birthday', r.birthday);
     $('sid').readOnly = true;
     ['newRes','indig'].forEach(n => document.querySelectorAll(`input[name=${n}]`).forEach(x => x.checked = x.value === r[n]));
     if (r.tribe && !TRIBES.includes(r.tribe)) { $('tribe').value = '其他'; $('tribeOther').value = r.tribe; }
