@@ -252,10 +252,18 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
         body: JSON.stringify(Object.assign({action}, payload))
       });
     } catch (e) {
-      throw new Error('連線失敗，請確認網路後再試一次。');
+      const err = new Error('連線失敗，請確認網路後再試一次。');
+      err.uncertain = true;
+      throw err;
     }
     let data;
-    try { data = await res.json(); } catch (e) { throw new Error('伺服器沒有正確回應，請稍後再試，或通知方老師。'); }
+    const raw = await res.text();
+    try { data = JSON.parse(raw); } catch (e) {
+      const detail = raw.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+      const err = new Error('伺服器沒有正確回應，請稍後再試，或通知方老師。（代碼 ' + res.status + (detail ? '：' + detail : '') + '）');
+      err.uncertain = true;
+      throw err;
+    }
     if (!data.ok) throw new Error(data.error || '發生錯誤，請稍後再試。');
     return data.result;
   }
@@ -329,7 +337,14 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
   document.querySelectorAll('input[name=newRes],input[name=indig]').forEach(r => r.addEventListener('change', toggleIdentity));
 
   /* ---- 訊息 ---- */
-  function show(el, text, ok){ $(el).innerHTML = text ? `<div class="msg ${ok?'ok':'err'}">${text}</div>` : ''; }
+  function show(el, text, ok){
+    $(el).innerHTML = '';
+    if (!text) return;
+    const div = document.createElement('div');
+    div.className = 'msg ' + (ok ? 'ok' : 'err');
+    div.textContent = text;
+    $(el).appendChild(div);
+  }
 
   /* ---- 出生年月日：年、月、日三個下拉選單 ---- */
   const pad = n => String(n).padStart(2, '0');
@@ -400,7 +415,29 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
   }
 
   /* ---- 讀檔 ---- */
-  function readFile(file){
+  /* 圖片先在手機上縮小、轉成 JPEG（最長邊 1600 像素），上傳更快也更穩定 */
+  async function readFile(file){
+    if (/^image\//.test(file.type)) {
+      try {
+        const url = URL.createObjectURL(file);
+        const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = url; });
+        const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * scale);
+        c.height = Math.round(img.naturalHeight * scale);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        const dataUrl = c.toDataURL('image/jpeg', 0.85);
+        if (dataUrl.length > 100) {
+          return {name: file.name.replace(/\.[^.]+$/, '') + '.jpg', mimeType: 'image/jpeg', data: dataUrl.split(',')[1]};
+        }
+      } catch (e) { /* 無法壓縮就上傳原檔 */ }
+    }
+    return readRaw(file);
+  }
+  function readRaw(file){
     return new Promise((res, rej) => {
       const fr = new FileReader();
       fr.onload = () => res({name: file.name, mimeType: file.type, data: fr.result.split(',')[1]});
@@ -422,7 +459,8 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
     if (d.gpa && !$('gpaFile').files[0] && !hasFile.gpa) return '有填在校平均成績，請上傳成績截圖。';
     for (const id of ['engFile','gpaFile']) {
       const f = $(id).files[0];
-      if (f && f.size > MAX_MB*1024*1024) return '截圖檔案請小於 ' + MAX_MB + ' MB。';
+      if (f && !/^image\//.test(f.type) && f.size > MAX_MB*1024*1024) return 'PDF 檔案請小於 ' + MAX_MB + ' MB；如果檔案太大，改用截圖上傳即可。';
+      if (f && f.size > 30*1024*1024) return '截圖檔案太大了，請重新截圖後上傳。';
     }
     if (d.newRes === '是' && (!d.fatherNat || !d.motherNat)) return '請填寫父母的國籍。';
     if (d.indig === '是' && !d.tribe) return '請填寫族別。';
@@ -451,7 +489,20 @@ window.PHOTOS = {"hero": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
       if (d.gpa && $('gpaFile').files[0]) d.gpaFileObj = await readFile($('gpaFile').files[0]);
     } catch (e) { $('btnSubmit').disabled = false; return show('submitMsg', e.message); }
 
+    // 送出後若沒收到正常回應，自動查詢資料是否其實已經存進去
+    const saved = r => ['nameZh','email','dept','grade','engScore','gpa','pref1','pref2','pref3','pref4','pref5']
+      .every(k => String(r[k] || '') === String(d[k] || ''));
     api('submit', {data: d})
+      .catch(async e => {
+        if (!e.uncertain) throw e;
+        show('submitMsg', '正在確認資料是否已經存入，請稍候…', true);
+        await new Promise(ok => setTimeout(ok, 1500));
+        try {
+          const r = await api('lookup', {sid: d.sid, birthday: d.birthday, mobile: d.mobile});
+          if (saved(r)) return {updated: !!auth};
+        } catch (e2) { /* 查不到就顯示原本的錯誤 */ }
+        throw e;
+      })
       .then(r => {
         $('btnSubmit').disabled = false;
         auth = {birthday: d.birthday, mobile: d.mobile};
